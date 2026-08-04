@@ -114,7 +114,7 @@ Install them onto the appliance:
 ./scripts/install-gemini-keys.sh aeroos@aeroos.local
 ```
 
-That copies the file to `/etc/aeroos/gemini.env` as root with mode 0600 and
+That copies the file to `/etc/aeroos/gemini.env` as `0640 root:aeroos` and
 restarts the service. Drop the argument to install on the Pi itself. The keys
 are copied as a file, never passed as an argument, because `argv` is
 world-readable in `/proc` while a process runs.
@@ -175,7 +175,8 @@ reachable. Re-check when an upstream fix ships.
 
 ## Raspberry Pi image
 
-The supported image-build host is a Raspberry Pi running current 64-bit Raspberry Pi OS. Install the official `rpi-image-gen`, then prepare and build:
+`rpi-image-gen` needs an aarch64 Linux host with loop devices. On a Pi running
+64-bit Raspberry Pi OS, install it and build directly:
 
 ```bash
 ./scripts/prepare-image.sh
@@ -183,7 +184,23 @@ cd /path/to/rpi-image-gen
 ./rpi-image-gen build -S /path/to/aeroos/image -c aeroos.yaml
 ```
 
-The image definition extends the official Trixie minimal A/B layout with the Pi 4 device layer, Cage/Chromium kiosk, hardware profile, camera gate, GPIO/I2C/1-Wire configuration, offline Python wheelhouse, and branded splash. The recipe is ready for a Pi build host; the final image still requires the physical build-and-flash gate because this development machine is not a Raspberry Pi.
+On a Mac or any machine with Docker, the same build runs inside a privileged
+arm64 container:
+
+```bash
+./scripts/prepare-image.sh
+./scripts/build-image-docker.sh
+```
+
+The result lands in `output/image/`. Flash it with Raspberry Pi Imager or `dd`.
+
+`--with-keys` copies `deploy/gemini.env` into the image so AI assistance works
+on first boot. That puts live credentials inside the `.img`: reasonable for a
+chamber you own, wrong for an image you intend to share, because anyone who
+reads the card reads the keys. Without the flag the image ships an empty key
+file and you install keys afterwards with `scripts/install-gemini-keys.sh`.
+
+The image definition extends the official Trixie minimal A/B layout with the Pi 4 device layer, Cage/Chromium kiosk, hardware profile, camera gate, GPIO/I2C/1-Wire configuration, offline Python wheelhouse, and branded splash.
 
 The generated image installs `/etc/aeroos/hardware.toml` with actuator master enable off. Complete the sensor, camera and dry-output gates in [docs/VALIDATION.md](docs/VALIDATION.md) before planning the separate 12 V power phase.
 

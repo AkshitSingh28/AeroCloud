@@ -30,7 +30,7 @@ class Settings:
     diagnostics_extra_path: Path | None = None
     camera_gate_dir: Path = Path("/var/lib/aeroos/camera-gate")
     gemini_env_path: Path | None = None
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.6-flash"
     wifi_interface: str = "wlan0"
 
     @property
@@ -71,6 +71,6 @@ def load_settings() -> Settings:
         ),
         camera_gate_dir=Path(os.getenv("AEROOS_CAMERA_GATE_DIR", "/var/lib/aeroos/camera-gate")),
         gemini_env_path=Path(os.getenv("AEROOS_GEMINI_ENV", "/etc/aeroos/gemini.env")),
-        gemini_model=os.getenv("AEROOS_GEMINI_MODEL", "gemini-2.5-flash"),
+        gemini_model=os.getenv("AEROOS_GEMINI_MODEL", "gemini-3.6-flash"),
         wifi_interface=os.getenv("AEROOS_WIFI_INTERFACE", "wlan0"),
     )

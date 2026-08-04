@@ -28,11 +28,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.6-flash"
 API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
-REQUEST_TIMEOUT = 45
+REQUEST_TIMEOUT = 90
 QUOTA_COOLDOWN_SECONDS = 60.0
 ERROR_COOLDOWN_SECONDS = 15.0
+
+# Current Gemini models think before answering, and those tokens are billed
+# against maxOutputTokens. A diagnostic prompt carrying probe output and logs
+# provokes 800+ thinking tokens, so a budget sized for the prose alone returns a
+# truncated fragment of the model's own scratchpad instead of an answer. Reserve
+# the thinking separately and keep the level low: this is an appliance on a
+# free-tier quota, not a reasoning benchmark.
+THINKING_HEADROOM_TOKENS = 1200
+THINKING_LEVEL = "low"
 
 SYSTEM_BRIEF = """You are the on-device assistant for AeroOS, a Raspberry Pi 4 aeroponic
 research appliance. You help an operator bring up hardware and interpret faults.
@@ -251,7 +260,11 @@ class GeminiService:
         payload = {
             "systemInstruction": {"parts": [{"text": system}]},
             "contents": [{"role": "user", "parts": parts}],
-            "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": max_tokens + THINKING_HEADROOM_TOKENS,
+                "thinkingConfig": {"thinkingLevel": THINKING_LEVEL},
+            },
         }
         attempts = max(1, len(self.pool))
         raw_keys = [key.value for key in self.pool.keys]
@@ -265,10 +278,27 @@ class GeminiService:
                 body = self._post(key, payload)
             except urllib.error.HTTPError as exc:
                 detail = _redact(exc.read().decode("utf-8", errors="replace")[:400], raw_keys)
+                if exc.code == 404:
+                    # The model is gone, not the key. Google retires models and
+                    # gates older ones to existing accounts, so every key in the
+                    # pool fails identically — resting all four helps nobody and
+                    # buries the real cause under a quota message.
+                    self.last_error = (
+                        f"Model '{self.model}' is unavailable: {detail} Set AEROOS_GEMINI_MODEL "
+                        "in /etc/aeroos/gemini.env to a current model and restart aeroos."
+                    )
+                    raise AIUnavailable(self.last_error) from exc
                 if exc.code in (429, 503):
                     # Free-tier quota. Rest this key and try the next one.
                     self.pool.penalize(key, QUOTA_COOLDOWN_SECONDS)
                     last_failure = f"{key.label} is rate limited"
+                    continue
+                if exc.code == 400 and "thinking" in detail.lower():
+                    # An older model that predates thinkingConfig. Drop it and
+                    # retry rather than reporting the key as rejected — the
+                    # operator is free to pin any model in gemini.env.
+                    payload["generationConfig"].pop("thinkingConfig", None)
+                    last_failure = f"{self.model} does not accept thinkingConfig"
                     continue
                 if exc.code in (400, 401, 403):
                     self.pool.penalize(key, QUOTA_COOLDOWN_SECONDS)
@@ -288,6 +318,14 @@ class GeminiService:
             if text:
                 self.last_error = None
                 return text
+            if self._truncated(body):
+                # Answering would need a bigger budget, and every other key in
+                # the pool would truncate at exactly the same point.
+                self.last_error = (
+                    "Gemini ran out of output budget before it finished answering. "
+                    "This prompt needs a larger maxOutputTokens or a lighter thinking level."
+                )
+                raise AIUnavailable(self.last_error)
             last_failure = "Gemini returned an empty response"
             self.pool.penalize(key, ERROR_COOLDOWN_SECONDS)
         self.last_error = last_failure
@@ -295,15 +333,29 @@ class GeminiService:
 
     @staticmethod
     def _extract(body: dict[str, Any]) -> str:
+        """Answer text only.
+
+        Thinking models can return their scratchpad as parts flagged `thought`.
+        Those are the model reasoning about the operator's chamber, not advice
+        for the operator, and rendering them as an answer is worse than showing
+        nothing — it reads as a broken, half-formed instruction.
+        """
         for candidate in body.get("candidates", []):
             chunks = [
                 part["text"]
                 for part in candidate.get("content", {}).get("parts", [])
-                if isinstance(part.get("text"), str)
+                if isinstance(part.get("text"), str) and not part.get("thought")
             ]
             if chunks:
                 return "\n".join(chunks).strip()
         return ""
+
+    @staticmethod
+    def _truncated(body: dict[str, Any]) -> bool:
+        return any(
+            candidate.get("finishReason") == "MAX_TOKENS"
+            for candidate in body.get("candidates", [])
+        )
 
     async def generate(
         self,

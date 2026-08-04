@@ -14,9 +14,13 @@ image/assets/
 .DS_Store
 
 # Build products and image artifacts: multi-gigabyte, reproducible from source.
+# output/image/*.img can also contain baked-in API keys — never commit it.
 output/
 .build/
 tmp/
+*.img
+*.img.zst
+*.img.xz
 
 # Separate product with its own repository; do not vendor it here.
 carsync-os/

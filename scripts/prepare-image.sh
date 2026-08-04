@@ -7,6 +7,16 @@ target_platform="manylinux2014_aarch64"
 target_python="3.13"
 target_abi="cp313"
 
+# pip evaluates environment markers against the machine running it, not the
+# --platform target, so a wheelhouse prepared off-Linux is missing every
+# dependency gated on sys_platform == "linux". build-image-docker.sh rebuilds it
+# inside an arm64 Linux container; on a Pi build host the set below is correct.
+if [ "$(uname -s)" != "Linux" ]; then
+  echo "WARNING: preparing the wheelhouse on $(uname -s)."
+  echo "         Dependencies gated on sys_platform == 'linux' will be missing."
+  echo "         Use ./scripts/build-image-docker.sh, which rebuilds it natively."
+fi
+
 mkdir -p "$assets_dir/wheelhouse"
 npm --prefix "$project_dir/ui" run build
 python3 "$project_dir/scripts/make_splash.py" "$assets_dir/aeroos-splash.tga"
@@ -34,7 +44,9 @@ python3 -m pip download \
 # Exclude host bytecode and metadata: the .pyc files are compiled for this
 # machine's Python and CPU, and the appliance runs neither. Python ignores them
 # on a magic-number mismatch, but they have no business in a release image.
-tar -czf "$assets_dir/aeroos-source.tar.gz" \
+# COPYFILE_DISABLE keeps macOS xattrs out of the tarball; they only produce
+# "unknown extended header keyword" noise when unpacked inside the image.
+COPYFILE_DISABLE=1 tar -czf "$assets_dir/aeroos-source.tar.gz" \
   --exclude='__pycache__' --exclude='*.py[cod]' --exclude='.DS_Store' \
   -C "$project_dir" aeroos pyproject.toml \
   -C "$project_dir" ui/dist

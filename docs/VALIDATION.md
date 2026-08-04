@@ -64,6 +64,11 @@ Sensors and camera operate while every physical actuator remains unpowered. Wate
 - API keys never appear in status output, error messages, or the audit log.
 - A rate-limited key fails over to the next key in the pool rather than failing
   the request.
+- A retired or unavailable model fails on the first key with an actionable
+  message; it does not rest all four keys chasing a fault none of them have.
+- A thinking model's scratchpad is never rendered as an answer, and a reply
+  truncated by the output budget is reported as a failure rather than shown as
+  a fragment.
 - The assistant has no path to an actuator: it returns text only.
 - A growth plan changes no setpoint: automation, actuator enable and the next
   spray time are identical before and after.

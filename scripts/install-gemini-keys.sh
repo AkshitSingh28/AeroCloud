@@ -4,7 +4,7 @@
 #   ./scripts/install-gemini-keys.sh                 # local: this machine is the Pi
 #   ./scripts/install-gemini-keys.sh aeroos@host     # remote: over SSH
 #
-# The keys go to /etc/aeroos/gemini.env, owned by root, mode 0600. They are
+# The keys go to /etc/aeroos/gemini.env as 0640 root:aeroos. They are
 # never passed on a command line — argv is world-readable in /proc while a
 # process runs — so the file is copied, not echoed.
 set -euo pipefail
@@ -12,6 +12,10 @@ set -euo pipefail
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
 source_file="$project_dir/deploy/gemini.env"
 target="/etc/aeroos/gemini.env"
+# 0640 root:aeroos, not 0600 root:root. The control service runs as the aeroos
+# user: a file only root can read locks out the one process that needs it, and
+# the read happens during start-up.
+service_user="aeroos"
 remote="${1:-}"
 
 if [ ! -f "$source_file" ]; then
@@ -31,14 +35,14 @@ fi
 count=$(grep -E '^AEROOS_GEMINI_KEYS=' "$source_file" | head -1 | cut -d= -f2- | tr ',' '\n' | grep -c '[^[:space:]]')
 
 if [ -z "$remote" ]; then
-  sudo install -D -m 0600 -o root -g root "$source_file" "$target"
+  sudo install -D -m 0640 -o root -g "$service_user" "$source_file" "$target"
   sudo systemctl restart aeroos
   echo "Installed $count key(s) to $target and restarted aeroos."
 else
   # Land it in the caller's home first: /etc is not writable by the SSH user,
   # and scp cannot elevate.
   scp -q "$source_file" "$remote:/tmp/aeroos-gemini.env"
-  ssh "$remote" "sudo install -D -m 0600 -o root -g root /tmp/aeroos-gemini.env $target \
+  ssh "$remote" "sudo install -D -m 0640 -o root -g $service_user /tmp/aeroos-gemini.env $target \
     && rm -f /tmp/aeroos-gemini.env \
     && sudo systemctl restart aeroos"
   echo "Installed $count key(s) to $remote:$target and restarted aeroos."
