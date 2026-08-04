@@ -1,0 +1,30 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
+ui/dist/
+data/
+image/assets/
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+
+# Build products and image artifacts: multi-gigabyte, reproducible from source.
+output/
+.build/
+tmp/
+
+# Separate product with its own repository; do not vendor it here.
+carsync-os/
+
+# Real credentials. Only the *.example templates belong in the repository:
+# this repo is public, and a committed key is a leaked key.
+deploy/*.env
+!deploy/*.env.example
+*.key
+*.pem
+secrets/

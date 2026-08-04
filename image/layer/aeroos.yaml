@@ -1,0 +1,88 @@
+# METABEGIN
+# X-Env-Layer-Name: aeroos
+# X-Env-Layer-Version: 0.1.0
+# X-Env-Layer-Category: application
+# X-Env-Layer-Desc: AeroOS aeroponic research controller, local API and touchscreen shell.
+# X-Env-Layer-Requires: device-user-admin,systemd-net-min,systemd-timesyncd
+#
+# X-Env-VarPrefix: aeroos
+#
+# X-Env-Var-source_archive: unset
+# X-Env-Var-source_archive-Desc: Absolute path to the prepared AeroOS source archive.
+# X-Env-Var-source_archive-Required: y
+# X-Env-Var-wheelhouse: unset
+# X-Env-Var-wheelhouse-Desc: Absolute path to the offline Python wheelhouse.
+# X-Env-Var-wheelhouse-Required: y
+# X-Env-Var-systemd_dir: unset
+# X-Env-Var-systemd_dir-Desc: Absolute path to AeroOS systemd service files.
+# X-Env-Var-systemd_dir-Required: y
+# X-Env-Var-env_example: unset
+# X-Env-Var-env_example-Desc: Absolute path to the AeroOS environment template.
+# X-Env-Var-env_example-Required: y
+# X-Env-Var-hardware_profile: unset
+# X-Env-Var-hardware_profile-Desc: Pinned Raspberry Pi hardware profile.
+# X-Env-Var-hardware_profile-Required: y
+# X-Env-Var-diagnostics_example: unset
+# X-Env-Var-diagnostics_example-Desc: Template for appliance-specific diagnostic commands.
+# X-Env-Var-diagnostics_example-Required: y
+# X-Env-Var-gemini_example: unset
+# X-Env-Var-gemini_example-Desc: Template for the Gemini API key file.
+# X-Env-Var-gemini_example-Required: y
+# X-Env-Var-camera_gate: unset
+# X-Env-Var-camera_gate-Desc: Arducam commissioning gate script.
+# X-Env-Var-camera_gate-Required: y
+# METAEND
+---
+mmdebstrap:
+  packages:
+    - cage
+    - chromium
+    - network-manager
+    - iwd
+    - python3
+    - python3-venv
+    - python3-picamera2
+    - python3-opencv
+    - python3-gpiozero
+    - python3-smbus
+    - python3-libgpiod
+    - rpicam-apps
+    - i2c-tools
+    - sqlite3
+  customize-hooks:
+    - |
+      set -eu
+      install -d -m 0755 "$1/opt/aeroos" "$1/var/lib/aeroos"
+      # /etc/aeroos is group-owned by the service user and closed to everyone
+      # else: the service must read its own key file, and the pin editor
+      # replaces hardware.toml atomically, which needs write on the directory.
+      install -d -m 0770 "$1/etc/aeroos"
+      tar -xzf "$IGconf_aeroos_source_archive" -C "$1/opt/aeroos"
+      install -m 0640 "$IGconf_aeroos_env_example" "$1/etc/aeroos/aeroos.env"
+      install -m 0660 "$IGconf_aeroos_hardware_profile" "$1/etc/aeroos/hardware.toml"
+      install -m 0640 "$IGconf_aeroos_diagnostics_example" "$1/etc/aeroos/diagnostics.toml.example"
+      # Keys ship empty. They are readable by the service and by nobody else —
+      # 0600 root:root would lock out the very process that needs them.
+      install -m 0640 "$IGconf_aeroos_gemini_example" "$1/etc/aeroos/gemini.env"
+      install -m 0755 "$IGconf_aeroos_camera_gate" "$1/usr/local/sbin/aeroos-camera-gate"
+      cp "$IGconf_aeroos_systemd_dir/aeroos.service" "$1/etc/systemd/system/aeroos.service"
+      cp "$IGconf_aeroos_systemd_dir/aeroos-kiosk.service" "$1/etc/systemd/system/aeroos-kiosk.service"
+      cp "$IGconf_aeroos_systemd_dir/aeroos-camera-gate.service" "$1/etc/systemd/system/aeroos-camera-gate.service"
+      cp -a "$IGconf_aeroos_wheelhouse" "$1/opt/aeroos/wheelhouse"
+      chroot "$1" /usr/bin/python3 -m venv --system-site-packages /opt/aeroos/venv
+      chroot "$1" /opt/aeroos/venv/bin/pip install --no-index --find-links=/opt/aeroos/wheelhouse '/opt/aeroos[pi]'
+      chroot "$1" usermod -a -G gpio,i2c,video,render,netdev "$IGconf_device_user1"
+      chroot "$1" chown -R "$IGconf_device_user1:$IGconf_device_user1" /var/lib/aeroos /opt/aeroos
+      # Config stays root-owned: the service reads and edits through the group,
+      # so a compromised service still cannot replace its own unit environment.
+      chroot "$1" chgrp -R "$IGconf_device_user1" /etc/aeroos
+      # The base image uses systemd-networkd with iwd. Keep nmcli installed for
+      # later commissioning work, but do not run a second network manager.
+      chroot "$1" systemctl disable NetworkManager.service NetworkManager-wait-online.service
+      chroot "$1" systemctl set-default graphical.target
+      printf '\ndtparam=i2c_arm=on\ndtoverlay=w1-gpio,gpiopin=4\ncamera_auto_detect=1\ndisplay_auto_detect=1\ndtoverlay=vc4-kms-v3d\n' >> "$1/boot/firmware/config.txt"
+      install -d -m 0755 "$1/etc/udev/rules.d"
+      printf 'SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_TOUCHSCREEN}=="1", ENV{LIBINPUT_CALIBRATION_MATRIX}="1 0 0 0 1 0"\n' > "$1/etc/udev/rules.d/99-aeroos-touch.rules"
+    - $BDEBSTRAP_HOOKS/enable-units "$1" aeroos
+    - $BDEBSTRAP_HOOKS/enable-units "$1" aeroos-camera-gate
+    - $BDEBSTRAP_HOOKS/enable-units "$1" aeroos-kiosk

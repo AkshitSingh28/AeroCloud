@@ -1,0 +1,24 @@
+[Unit]
+Description=AeroOS touchscreen shell
+After=aeroos.service systemd-user-sessions.service
+Requires=aeroos.service
+
+[Service]
+Type=simple
+User=aeroos
+Group=aeroos
+PAMName=login
+TTYPath=/dev/tty1
+StandardInput=tty-force
+StandardOutput=journal
+RuntimeDirectory=aeroos-kiosk
+RuntimeDirectoryMode=0700
+Environment=XDG_RUNTIME_DIR=/run/aeroos-kiosk
+Environment=WLR_LIBINPUT_NO_DEVICES=1
+ExecStart=/usr/bin/cage -- /usr/bin/chromium http://127.0.0.1:8080 --kiosk --noerrdialogs --disable-infobars --no-first-run --disable-session-crashed-bubble --disable-translate --disable-features=TranslateUI --enable-features=OverlayScrollbar --ozone-platform=wayland --start-maximized
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical.target
+

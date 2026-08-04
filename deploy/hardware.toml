@@ -1,0 +1,46 @@
+# AeroOS Raspberry Pi 4 bring-up profile - Revision 2.0
+
+[display]
+model = "SC1227"
+width = 800
+height = 480
+orientation = "landscape"
+interface = "DSI"
+
+[dht22]
+bcm_gpio = 18
+physical_pin = 12
+power = "3.3V"
+
+[ds18b20]
+bcm_gpio = 4
+physical_pin = 7
+pull_up_ohms = 4700
+pull_up_to = "3.3V"
+
+[pcf8591]
+i2c_bus = 1
+address = 0x48
+temt6000_channel = 0
+power = "3.3V"
+
+[camera]
+model = "Arducam B0483 64MP"
+interface = "CSI"
+live_width = 1920
+live_height = 1080
+live_fps = 15
+still_width = 9152
+still_height = 6944
+
+[outputs]
+mist_bcm_gpio = 17
+fan_bcm_gpio = 25
+active_low = true
+mist_relay_enabled = false
+fan_relay_enabled = false
+
+[safety]
+actuator_master_enable = false
+development_session_minutes = 30
+development_mist_limit_seconds = 2

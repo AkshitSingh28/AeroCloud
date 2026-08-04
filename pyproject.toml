@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "aeroos"
+version = "0.1.0"
+description = "AeroOS control plane for Raspberry Pi aeroponic research systems"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.34,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28,<1",
+  "pytest>=8.3,<9",
+  "pytest-asyncio>=0.25,<1",
+]
+pi = [
+  "adafruit-circuitpython-dht>=4.0,<5",
+  "smbus2>=0.5,<1",
+  "w1thermsensor>=2.3,<3",
+]
+
+[project.scripts]
+aeroos = "aeroos.main:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["aeroos"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

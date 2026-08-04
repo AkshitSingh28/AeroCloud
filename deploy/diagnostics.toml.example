@@ -1,0 +1,22 @@
+# Extra read-only diagnostics for this appliance.
+#
+# Entries here appear in the Diagnostics console alongside the built-ins. They
+# are executed with the argv given below — never through a shell — with the same
+# 20 second timeout. Keep them read-only: this file is a debugging aid, not a
+# remote-administration channel.
+#
+# Install to /etc/aeroos/diagnostics.toml.
+
+# [[command]]
+# name = "list-usb"
+# label = "List USB devices"
+# description = "Enumerate USB peripherals attached to the appliance."
+# argv = ["lsusb"]
+# category = "system"
+
+# [[command]]
+# name = "i2c-scan-bus0"
+# label = "Scan I2C bus 0"
+# description = "Some HATs expose a second bus; scan it here."
+# argv = ["i2cdetect", "-y", "0"]
+# category = "bus"

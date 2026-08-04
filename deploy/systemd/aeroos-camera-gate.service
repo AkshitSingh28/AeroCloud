@@ -1,0 +1,13 @@
+[Unit]
+Description=AeroOS Arducam B0483 commissioning gate
+After=local-fs.target
+Before=aeroos.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/aeroos-camera-gate
+RemainAfterExit=yes
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

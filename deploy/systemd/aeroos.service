@@ -1,0 +1,44 @@
+[Unit]
+Description=AeroOS control engine and local API
+After=local-fs.target network.target aeroos-camera-gate.service
+Requires=aeroos-camera-gate.service
+Before=aeroos-kiosk.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=aeroos
+Group=aeroos
+# netdev lets the service talk to iwd for WiFi provisioning.
+SupplementaryGroups=gpio i2c video render netdev
+WorkingDirectory=/opt/aeroos
+Environment=AEROOS_DATA_DIR=/var/lib/aeroos
+Environment=AEROOS_SIMULATOR=0
+# The kiosk browser reaches the API over loopback. Publishing the control plane
+# on every interface is opt-in: override AEROOS_BIND_HOST in the environment
+# file, and only behind a trusted network boundary.
+Environment=AEROOS_BIND_HOST=127.0.0.1
+EnvironmentFile=-/etc/aeroos/aeroos.env
+# The console script reads the operator's stored LAN-exposure choice, so the
+# toggle in Settings takes effect on restart without editing this unit.
+ExecStart=/opt/aeroos/venv/bin/aeroos
+Restart=always
+RestartSec=2
+TimeoutStopSec=20
+KillSignal=SIGINT
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# /etc/aeroos is writable so pin assignments can be edited from the appliance.
+# ReadWritePaths only lifts the ProtectSystem=strict mount; the directory must
+# also be group-writable by this user (the image layer sets 0770 root:aeroos).
+ReadWritePaths=/var/lib/aeroos /etc/aeroos
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

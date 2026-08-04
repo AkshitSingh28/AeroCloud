@@ -1,0 +1,34 @@
+include:
+  file: trixie-minbase-ab.yaml
+
+image:
+  system_part_size: 2600M
+  name: aeroos-rpi4
+
+device:
+  layer: rpi4
+  hostname: aeroos
+  user1: aeroos
+
+locale:
+  timezone: Asia/Kolkata
+
+ieee80211:
+  regdom: IN
+
+layer:
+  app: aeroos
+  extra: rpi-splash-screen
+
+splash:
+  image_path: ${@SRCROOT}/assets/aeroos-splash.tga
+
+aeroos:
+  source_archive: ${@SRCROOT}/assets/aeroos-source.tar.gz
+  wheelhouse: ${@SRCROOT}/assets/wheelhouse
+  systemd_dir: ${@SRCROOT}/../deploy/systemd
+  env_example: ${@SRCROOT}/../deploy/aeroos.env.example
+  hardware_profile: ${@SRCROOT}/../deploy/hardware.toml
+  diagnostics_example: ${@SRCROOT}/../deploy/diagnostics.toml.example
+  gemini_example: ${@SRCROOT}/../deploy/gemini.env.example
+  camera_gate: ${@SRCROOT}/../scripts/verify-camera.sh
