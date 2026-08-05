@@ -34,6 +34,20 @@ fi
 
 count=$(grep -E '^AEROOS_GEMINI_KEYS=' "$source_file" | head -1 | cut -d= -f2- | tr ',' '\n' | grep -c '[^[:space:]]')
 
+# Prove the keys work before restarting the control service. Rotation is when a
+# typo is most likely and least visible: the pool would report four keys and
+# fail only when somebody asks the assistant a question mid bring-up.
+# SKIP_KEY_CHECK=1 installs without network access.
+if [ "${SKIP_KEY_CHECK:-0}" != "1" ]; then
+  python="$project_dir/.venv/bin/python"
+  [ -x "$python" ] || python=python3
+  if ! "$python" "$project_dir/scripts/check-gemini-keys.py" "$source_file"; then
+    echo "error: refusing to install keys that do not work." >&2
+    echo "       Re-run with SKIP_KEY_CHECK=1 to install anyway." >&2
+    exit 1
+  fi
+fi
+
 if [ -z "$remote" ]; then
   sudo install -D -m 0640 -o root -g "$service_user" "$source_file" "$target"
   sudo systemctl restart aeroos

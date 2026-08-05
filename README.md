@@ -108,11 +108,17 @@ out of this repository:
 AEROOS_GEMINI_KEYS=key1,key2,key3,key4
 ```
 
-Install them onto the appliance:
+Check they work, then install them onto the appliance:
 
 ```bash
+./scripts/check-gemini-keys.py
 ./scripts/install-gemini-keys.sh aeroos@aeroos.local
 ```
+
+The install runs the check itself and refuses to restart the service with a key
+that cannot answer — rotation is exactly when a typo is most likely and least
+visible, since the pool would report four keys and fail only when somebody asks
+the assistant something mid bring-up.
 
 That copies the file to `/etc/aeroos/gemini.env` as `0640 root:aeroos` and
 restarts the service. Drop the argument to install on the Pi itself. The keys
@@ -125,10 +131,27 @@ rotation buys you nothing. AeroOS rotates between them and rests any key that
 returns a quota error instead of failing your request; the Settings panel shows
 each key's state without ever revealing the key itself.
 
-Keys are deliberately not baked into the image — the image ships an empty
-template, so a flashed card that goes missing is not a leaked credential. In the
-simulator the assistant answers from a built-in stub, so the whole workflow can
-be rehearsed without keys.
+By default keys are **not** baked into the image: it ships an empty template, so
+a flashed card that goes missing is not a leaked credential. Building with
+`--with-keys` embeds `deploy/gemini.env` instead, which saves a step on a
+chamber you own — but that image and every card written from it are then
+credentials, and should be handled as such.
+
+In the simulator the assistant answers from a built-in stub, so the whole
+workflow can be rehearsed without keys.
+
+### Rotating keys
+
+Keys are worth rotating whenever one may have been exposed — pasted into a
+terminal that logs, shared in a screenshot, or baked into an image that left
+your hands.
+
+1. Create replacements at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+2. Put them in `deploy/gemini.env`, then `./scripts/install-gemini-keys.sh <host>`.
+3. **Delete the old keys in AI Studio.** Until you do, they still work — the new
+   ones do not displace them.
+4. If an image was built with `--with-keys`, rebuild it. The old keys are inside
+   the existing one, and inside every card flashed from it.
 
 ## Operator access
 
