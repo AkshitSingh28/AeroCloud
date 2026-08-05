@@ -1,235 +1,165 @@
+<div align="center">
+
+<img src="branding/aeroos-mark.svg" alt="AeroOS" width="88">
+
 # AeroOS
 
-*Repository: [AeroCloud](https://github.com/AkshitSingh28/AeroCloud)*
+**A research appliance for aeroponics.**
 
-AeroOS is a Raspberry Pi 4 Linux appliance for aeroponic control, local monitoring, computer-vision root analysis, and reproducible agricultural research.
+Climate, misting, root imaging, and reproducible experiments — on one
+Raspberry Pi, with no cloud and no internet requirement.
 
-The illustrated, prototype-specific hardware build sequence is available in [output/pdf/AeroOS_Hardware_Setup_and_Commissioning_Manual.pdf](output/pdf/AeroOS_Hardware_Setup_and_Commissioning_Manual.pdf).
+[Documentation](docs/) · [Hardware](#hardware) · [Architecture](#architecture) · [Safety](#safety)
 
-It is built as two independent product layers:
+</div>
 
-- A safety-oriented Python control plane that owns sensors, GPIO, scheduling, dosing, persistence, authentication, and the local API.
-- A touch-first React shell that boots in fullscreen kiosk mode and provides operations, experiments, analytics, vision, calibration, diagnostics, and settings.
+---
 
-## Bringing up hardware
+AeroOS turns a Raspberry Pi 4 into a dedicated instrument for growing plants in
+mist. It owns the sensors and the actuators, records every reading locally,
+photographs the root zone, and binds the whole run to a named experiment.
 
-The **Diagnostics** workspace is the tool for connecting sensors and finding
-faults. It has three parts:
+It is designed around a single assumption: **this machine can flood a room.** A
+pump under software control, in a sealed chamber, with a reservoir attached, is
+a device that fails wet. Most of what follows is a consequence of taking that
+seriously.
 
-- **Sensor bring-up** — every measurement the control plane expects, its live
-  value, and whether it is healthy, silent, or simply not wired yet. A sensor
-  that reports nothing expands into the specific things to check: the pin it
-  should be on, the pull-up it needs, the overlay that has to be in
-  `config.txt`, and the failure mode that produces that symptom.
-- **Console** — a fixed registry of read-only checks (`i2cdetect`, 1-Wire
-  enumeration, `pinctrl get`, `rpicam-hello --list-cameras`, service and kernel
-  logs, throttling flags, storage). Each shows its exact argv before it runs.
-  There is deliberately no arbitrary shell: this service can energize a pump,
-  so a generic command endpoint would be a remote-code-execution surface.
-  Appliance-specific checks can be added in `/etc/aeroos/diagnostics.toml` —
-  see [deploy/diagnostics.toml.example](deploy/diagnostics.toml.example).
-- **Audit trail** — every operator command and every rejection, which is where
-  to look when a control was refused and it is not obvious why.
+---
 
-In the simulator the console returns labelled synthetic output so the workflow
-can be rehearsed before the Pi is assembled.
+## Principles
 
-## Network
+**Outputs do not exist until commissioned.** With the actuator master enable
+off, the GPIO output objects are never constructed — not guarded by a branch,
+not created.
 
-WiFi is provisioned from **Settings → Network & access**: scan, join, forget.
-The appliance uses iwd, so passphrases are handed to iwd on the child process's
-stdin — never as an argument, which would put them in `/proc` — and AeroOS
-neither stores nor logs them.
+**A measurement it cannot take reads null.** AeroOS does not substitute a
+plausible number for a sensor that is absent, and says so in the interface.
 
-The control API listens on loopback, so only the touchscreen can reach it. The
-same panel has a **Reach the dashboard from other devices** toggle that
-publishes it on the LAN. That exposes misting, dosing, and the camera feed to
-everyone on the network with only the operator PIN in front of them, so it is
-off by default, warns before it takes effect, and applies on the next
-`sudo systemctl restart aeroos`.
+**Presence is proven, not assumed.** Physical controls require a PIN entered
+within the last five minutes. A kiosk session open for weeks is not evidence
+that anyone is standing at the machine.
 
-## Changing GPIO assignments
+**Nothing survives a reboot.** On restart the controller takes fresh readings
+and decides again rather than resuming a command it can no longer justify.
 
-**Hardware → GPIO assignment** edits the pin map in `/etc/aeroos/hardware.toml`
-without an SSH session. Reserved lines are refused: BCM2/3 carry the ADC,
-BCM14/15 are the serial console, BCM0/1 are the HAT EEPROM. Two functions cannot
-share a line, and a relay line cannot be moved while the actuator master enable
-is on — the old GPIO has to be released in a known-safe state first. Moving the
-1-Wire pin warns that `dtoverlay=w1-gpio` in `config.txt` has to move with it.
+---
 
-The adapter builds its GPIO objects at start-up, so changes apply on the next
-service restart.
+## The appliance
 
-## AI assistance
+### Operations
 
-Optional Gemini integration, off until an operator turns it on.
+A touch-first shell that boots straight into fullscreen. Live climate and
+solution telemetry, mist scheduling with a countdown, the delivery path from
+reservoir to nozzle to return drain, and the current safety state — always
+visible, never more than one tap away.
 
-For growing:
+### Bring-up
 
-- **Chamber briefing** on the home screen — what the last 24 hours looked like,
-  what is drifting, and the one thing worth doing next. Generated only when
-  asked for; reading it back costs nothing.
-- **Growth plan** in Chamber — a target envelope for the crop and stage of the
-  active run, held against what the chamber is actually maintaining.
-- **Root assessment** in Vision — a capture sent for a visual health read, saved
-  onto the capture record so it stays part of the research trail.
-- **Run report** in Experiments — environment, delivery, root growth, and
-  interruptions across a run, written onto the experiment row.
-- **Ask** — a question box in every workspace, answered from this chamber's own
-  telemetry.
+A diagnostics workspace for the hours spent wiring. Every measurement the
+control plane expects, its live value, and whether it is healthy, silent, or
+simply not connected yet; a fixed registry of read-only checks that show their
+exact invocation before they run; an audit trail of every command and every
+refusal.
 
-For bring-up:
+There is deliberately no arbitrary shell. A service that can energize a pump
+does not also get a general command endpoint.
 
-- **Explain with AI** on any failing sensor probe or open alert.
-- **Diagnose current faults** across the whole appliance.
+### Research
 
-The prompts carry the capability map, so the assistant knows which measurements
-this appliance actually has. It is told to say a value is unavailable rather
-than estimate one, and not to give a specific nutrient dose — AeroOS has no
-calibrated chemistry instrument.
+Experiments bind telemetry, mist events, doses, and root captures to a named
+run. Root area is measured over time from the camera, and readings export for
+analysis elsewhere.
 
-Two properties are structural, not policy:
+### Assistance — optional, off by default
 
-- **The assistant is advisory.** There is no code path from a model response to
-  a control call. It cannot mist, dose, or change a safety state. A growth plan
-  is a suggestion the operator applies by hand; the endpoint returns
-  `applied: false` and the controller is never told about it.
-- **It is opt-in because data leaves the appliance.** Every request sends
-  telemetry and log excerpts to Google, and every call is written to the audit
-  trail.
+Gemini, reading the chamber's own data: a briefing on the last day of
+operation, a growth plan for the crop and stage in progress, an assessment
+written onto a root capture, a report written onto a finished run, and an ask
+box in every workspace. Prompts carry the capability map, so the assistant
+knows which measurements this appliance actually has.
 
-### Adding your keys
+Two properties are structural rather than policy. The assistant is
+**advisory** — there is no code path from a model response to a control call.
+And it is **opt-in**, because every request sends chamber data off the
+appliance. Every call is audited.
 
-Get them from [aistudio.google.com/apikey](https://aistudio.google.com/apikey),
-then edit **`deploy/gemini.env`** — the file is git-ignored, so real keys stay
-out of this repository:
+### Network
+
+The API listens on loopback, so only the touchscreen reaches it. Publishing it
+on the LAN is a deliberate, warned, off-by-default choice. WiFi is provisioned
+from the touchscreen, and GPIO assignments are editable from the interface —
+with reserved lines refused and relay lines immovable while outputs are live.
+
+---
+
+## Hardware
+
+| Component | Interface | Purpose |
+|---|---|---|
+| Raspberry Pi 4 | — | Controller |
+| SC1227 7" touchscreen | DSI | 800×480 kiosk |
+| DHT22 | BCM18 | Chamber temperature and humidity |
+| DS18B20 | BCM4 (1-Wire) | Solution temperature |
+| TEMT6000 + PCF8591 | I²C `0x48` | Coarse ambient light |
+| Arducam B0483 | CSI | Root imaging — 1080p15 live, 9152×6944 stills |
+| Mist relay | BCM17 | Pump — disabled until commissioned |
+| Fan relay | BCM25 | Circulation — disabled until commissioned |
+
+pH, EC, flow, and reservoir level are not commissioned. AeroOS does not pretend
+an 8-bit ADC is a chemistry instrument; those fields stay null.
+
+---
+
+## Architecture
 
 ```
-AEROOS_GEMINI_KEYS=key1,key2,key3,key4
+Raspberry Pi 4
+├── aeroos-camera-gate.service    verifies the sensor before anything else starts
+├── aeroos.service                control plane — forces outputs off, then opens
+│   ├── AeroController            state machine, polling, safety interlocks
+│   ├── Hardware                  one contract, two adapters: Pi and simulator
+│   ├── Database                  SQLite WAL — telemetry, experiments, audit
+│   ├── VisionService             live stream and still capture
+│   ├── DiagnosticsService        allow-listed probes and commands
+│   └── FastAPI                   local REST and SSE, loopback by default
+└── aeroos-kiosk.service          Cage and Chromium, started last
 ```
 
-Check they work, then install them onto the appliance:
+The interface talks only to the local API. It never touches GPIO or the
+database directly.
 
-```bash
-./scripts/check-gemini-keys.py
-./scripts/install-gemini-keys.sh aeroos@aeroos.local
-```
+Safety states run `commissioning` → `safe` → `active` → `degraded` →
+`critical` → `maintenance` → `shutting_down`. Actuator requests are refused in
+`critical` until an operator clears the lockout deliberately.
 
-The install runs the check itself and refuses to restart the service with a key
-that cannot answer — rotation is exactly when a typo is most likely and least
-visible, since the pool would report four keys and fail only when somebody asks
-the assistant something mid bring-up.
+---
 
-That copies the file to `/etc/aeroos/gemini.env` as `0640 root:aeroos` and
-restarts the service. Drop the argument to install on the Pi itself. The keys
-are copied as a file, never passed as an argument, because `argv` is
-world-readable in `/proc` while a process runs.
+## Documentation
 
-Create the four keys in **four different Google Cloud projects**. The free tier
-is rate limited per project, so four keys in one project share one quota and the
-rotation buys you nothing. AeroOS rotates between them and rests any key that
-returns a quota error instead of failing your request; the Settings panel shows
-each key's state without ever revealing the key itself.
+| | |
+|---|---|
+| [Getting started](docs/GETTING_STARTED.md) | Running the simulator, building an image, configuring assistance |
+| [Commissioning manual](docs/AeroOS_Hardware_Setup_and_Commissioning_Manual.pdf) | Illustrated build and wiring sequence |
+| [Bring-up contract](docs/HARDWARE.md) | Pin assignments and commissioning state |
+| [Architecture](docs/ARCHITECTURE.md) | Control plane internals |
+| [Validation](docs/VALIDATION.md) | Gates before physical actuation |
 
-By default keys are **not** baked into the image: it ships an empty template, so
-a flashed card that goes missing is not a leaked credential. Building with
-`--with-keys` embeds `deploy/gemini.env` instead, which saves a step on a
-chamber you own — but that image and every card written from it are then
-credentials, and should be handled as such.
+The appliance runs fully in simulation, including assistance, so the entire
+system can be evaluated before any hardware exists.
 
-In the simulator the assistant answers from a built-in stub, so the whole
-workflow can be rehearsed without keys.
+---
 
-### Rotating keys
+## Safety
 
-Keys are worth rotating whenever one may have been exposed — pasted into a
-terminal that logs, shared in a screenshot, or baked into an image that left
-your hands.
+Physical misting and dosing remain disabled until flow, level, pump delivery,
+power recovery, and emergency behaviour are calibrated and validated on the
+assembled rig. The simulator's defaults are development aids, not crop or
+chemical recommendations.
 
-1. Create replacements at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
-2. Put them in `deploy/gemini.env`, then `./scripts/install-gemini-keys.sh <host>`.
-3. **Delete the old keys in AI Studio.** Until you do, they still work — the new
-   ones do not displace them.
-4. If an image was built with `--with-keys`, rebuild it. The old keys are inside
-   the existing one, and inside every card flashed from it.
+Neither AeroOS nor its assistant is a substitute for knowing what you are
+putting in the water.
 
-## Operator access
-
-Monitoring is readable without authentication on the local appliance. Commands
-that move an actuator — misting, dosing, arming automation, resetting a safety
-lockout — additionally require a PIN entered within the last five minutes, not
-merely a session that was unlocked earlier in the day. The kiosk browser never
-closes, so a session token alone is not evidence that the operator is still
-present. Failed PIN attempts back off progressively.
-
-## Run the simulator
-
-```bash
-python3 -m venv .venv
-.venv/bin/pip install -e '.[dev]'
-npm --prefix ui install
-npm --prefix ui run build
-AEROOS_SIMULATOR=1 .venv/bin/uvicorn aeroos.main:app --host 127.0.0.1 --port 8080
-```
-
-Open `http://127.0.0.1:8080`. The simulator operator PIN is `0420`.
-
-The simulator starts a mint experiment and generates complete test telemetry. Physical mode instead reports only commissioned capabilities and leaves missing measurements null.
-
-## Verify
-
-```bash
-.venv/bin/pytest -q
-npm --prefix ui run test
-npm --prefix ui run build
-npm --prefix ui audit
-```
-
-`tests/test_routes.py` pins the trust level of every API route. A new endpoint
-that is neither declared public nor declared protected fails the suite until
-somebody decides which it is.
-
-`npm audit` reports one unresolved advisory in `react-router`
-(`GHSA-qwww-vcr4-c8h2`, RSC-mode CSRF). There is no fixed release: every version
-from 7.12.0 to 8.2.0 is in range, and downgrading below it reintroduces fourteen
-older advisories. AeroOS uses client-side `BrowserRouter` routes with no RSC
-mode, server actions, or data-router mutations, so the vulnerable path is not
-reachable. Re-check when an upstream fix ships.
-
-## Raspberry Pi image
-
-`rpi-image-gen` needs an aarch64 Linux host with loop devices. On a Pi running
-64-bit Raspberry Pi OS, install it and build directly:
-
-```bash
-./scripts/prepare-image.sh
-cd /path/to/rpi-image-gen
-./rpi-image-gen build -S /path/to/aeroos/image -c aeroos.yaml
-```
-
-On a Mac or any machine with Docker, the same build runs inside a privileged
-arm64 container:
-
-```bash
-./scripts/prepare-image.sh
-./scripts/build-image-docker.sh
-```
-
-The result lands in `output/image/`. Flash it with Raspberry Pi Imager or `dd`.
-
-`--with-keys` copies `deploy/gemini.env` into the image so AI assistance works
-on first boot. That puts live credentials inside the `.img`: reasonable for a
-chamber you own, wrong for an image you intend to share, because anyone who
-reads the card reads the keys. Without the flag the image ships an empty key
-file and you install keys afterwards with `scripts/install-gemini-keys.sh`.
-
-The image definition extends the official Trixie minimal A/B layout with the Pi 4 device layer, Cage/Chromium kiosk, hardware profile, camera gate, GPIO/I2C/1-Wire configuration, offline Python wheelhouse, and branded splash.
-
-The generated image installs `/etc/aeroos/hardware.toml` with actuator master enable off. Complete the sensor, camera and dry-output gates in [docs/VALIDATION.md](docs/VALIDATION.md) before planning the separate 12 V power phase.
-
-## Safety boundary
-
-The simulator and defaults are development aids, not crop or chemical recommendations. Physical misting and dosing must remain disabled until flow, level, pH, EC, pump delivery, power recovery, and emergency behavior are calibrated and validated on the assembled rig.
+---
 
 ## License
 
